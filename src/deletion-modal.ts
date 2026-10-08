@@ -49,7 +49,7 @@ export class DeletionModal extends Modal {
       .addButton((button) =>
         button
           .setButtonText("Excluir também no Nextcloud")
-          .setWarning()
+          .setDestructive()
           .onClick(() => this.finish("delete")),
       );
   }

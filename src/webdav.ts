@@ -84,9 +84,26 @@ export function encodePath(path: string): string {
     .join("/");
 }
 
+function hasControlCharacter(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function stringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
 export function isSafeRelativePath(path: string): boolean {
   if (!path || path.startsWith("/") || path.includes("\\")) return false;
-  if (/[\u0000-\u001f\u007f]/.test(path)) return false;
+  if (hasControlCharacter(path)) return false;
   return path.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
 
@@ -149,20 +166,19 @@ export class NextcloudClient {
     });
     if (res.status !== 200) throw new NextcloudError(describeStatus(res.status), res.status);
 
-    let data: Record<string, unknown> | undefined;
+    let body: unknown;
     try {
-      data = res.json?.ocs?.data;
+      body = res.json;
     } catch {
-      data = undefined;
+      body = undefined;
     }
-    const id = typeof data?.id === "string" ? data.id : "";
+    const ocs = isRecord(body) ? body.ocs : undefined;
+    const data = isRecord(ocs) && isRecord(ocs.data) ? ocs.data : {};
+    const id = stringField(data, "id");
     if (!id) {
       throw new NextcloudError("O servidor respondeu, mas não parece ser um Nextcloud. Confira o endereço.");
     }
-    const displayName =
-      (typeof data?.["display-name"] === "string" && (data["display-name"] as string)) ||
-      (typeof data?.displayname === "string" && (data.displayname as string)) ||
-      id;
+    const displayName = stringField(data, "display-name") || stringField(data, "displayname") || id;
     return { id, displayName };
   }
 
@@ -243,7 +259,8 @@ export class NextcloudClient {
     const queue: string[] = [""];
 
     while (queue.length > 0) {
-      const dir = queue.shift() as string;
+      const dir = queue.shift();
+      if (dir === undefined) break;
       const entries = await this.propfind(dir, "1");
       if (entries === null) {
         if (dir === "") listing.rootExists = false;

@@ -64,7 +64,8 @@ export function conflictPath(path: string, date: Date, sequence = 1): string {
   return `${dir}${base} (conflito ${stamp}${suffix})${ext}`;
 }
 
-export function isIgnoredPath(path: string, ignorePaths: string[]): boolean {
+export function isIgnoredPath(path: string, ignorePaths: string[], configDir: string): boolean {
+  if (path === configDir || path.startsWith(configDir + "/")) return true;
   if (path.split("/").some((segment) => segment.startsWith("."))) return true;
   return ignorePaths.some((raw) => {
     const prefix = raw.trim().replace(/^\/+|\/+$/g, "");
@@ -74,6 +75,7 @@ export function isIgnoredPath(path: string, ignorePaths: string[]): boolean {
 
 export class SyncEngine {
   private remoteDirs = new Set<string>();
+  private readonly configDir: string;
 
   constructor(
     private readonly app: App,
@@ -81,7 +83,9 @@ export class SyncEngine {
     private readonly settings: NextSyncSettings,
     private readonly state: SyncState,
     private readonly hooks: SyncHooks,
-  ) {}
+  ) {
+    this.configDir = app.vault.configDir;
+  }
 
   async run(): Promise<SyncReport> {
     const report: SyncReport = {
@@ -96,7 +100,7 @@ export class SyncEngine {
 
     const local = new Map<string, TFile>();
     for (const file of this.app.vault.getFiles()) {
-      if (!isIgnoredPath(file.path, this.settings.ignorePaths)) local.set(file.path, file);
+      if (!isIgnoredPath(file.path, this.settings.ignorePaths, this.configDir)) local.set(file.path, file);
     }
 
     const listing = await this.client.listAll();
@@ -108,7 +112,7 @@ export class SyncEngine {
 
     const remote = new Map<string, RemoteEntry>();
     for (const [path, entry] of listing.files) {
-      if (!isIgnoredPath(path, this.settings.ignorePaths)) remote.set(path, entry);
+      if (!isIgnoredPath(path, this.settings.ignorePaths, this.configDir)) remote.set(path, entry);
     }
 
     this.assertNotWiped(local.size, remote.size);
@@ -126,7 +130,7 @@ export class SyncEngine {
     this.hooks.onProgress(done, work.length);
     for (const action of work) {
       try {
-        await this.execute(action, local, remote, report);
+        await this.execute(action, remote, report);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         report.errors.push(`${action.path}: ${message}`);
@@ -205,41 +209,38 @@ export class SyncEngine {
     return actions;
   }
 
-  private async execute(
-    action: Action,
-    local: Map<string, TFile>,
-    remote: Map<string, RemoteEntry>,
-    report: SyncReport,
-  ): Promise<void> {
+  private async execute(action: Action, remote: Map<string, RemoteEntry>, report: SyncReport): Promise<void> {
     const { path } = action;
     switch (action.kind) {
       case "upload":
-        await this.upload(local.get(path) as TFile);
+        await this.upload(this.requireLocal(path));
         report.uploaded++;
         return;
 
       case "download":
-        if (await this.download(path, remote.get(path) as RemoteEntry)) report.downloaded++;
+        if (await this.download(path, this.requireRemote(remote, path))) report.downloaded++;
         else report.conflicts.push(path);
         return;
 
       case "compare":
-        if (!(await this.compare(local.get(path) as TFile, remote.get(path) as RemoteEntry))) {
+        if (!(await this.compare(this.requireLocal(path), this.requireRemote(remote, path)))) {
           report.conflicts.push(path);
         }
         return;
 
       case "conflict": {
+        const file = this.requireLocal(path);
+        const entry = this.requireRemote(remote, path);
         const { data } = await this.client.get(path);
-        await this.resolveConflict(local.get(path) as TFile, data, remote.get(path) as RemoteEntry);
+        await this.resolveConflict(file, data, entry);
         report.conflicts.push(path);
         return;
       }
 
       case "deleteLocal": {
-        const file = local.get(path) as TFile;
+        const file = this.requireLocal(path);
         this.hooks.beforeLocalTrash(path);
-        await this.app.vault.trash(file, false);
+        await this.app.fileManager.trashFile(file);
         delete this.state[path];
         report.deletedLocal++;
         return;
@@ -247,12 +248,11 @@ export class SyncEngine {
 
       case "deleteRemote": {
         const result = await this.client.delete(path, this.state[path]?.etag);
+        delete this.state[path];
         if (result === "changed") {
-          delete this.state[path];
-          await this.download(path, remote.get(path) as RemoteEntry);
+          await this.download(path, this.requireRemote(remote, path));
           report.restored++;
         } else {
-          delete this.state[path];
           report.deletedRemote++;
         }
         return;
@@ -262,6 +262,18 @@ export class SyncEngine {
         delete this.state[path];
         return;
     }
+  }
+
+  private requireLocal(path: string): TFile {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) throw new Error("O arquivo não existe mais no cofre.");
+    return file;
+  }
+
+  private requireRemote(remote: Map<string, RemoteEntry>, path: string): RemoteEntry {
+    const entry = remote.get(path);
+    if (!entry) throw new Error("O arquivo não foi encontrado na listagem do servidor.");
+    return entry;
   }
 
   private async compare(file: TFile, entry: RemoteEntry): Promise<boolean> {

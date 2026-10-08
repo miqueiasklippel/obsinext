@@ -1,11 +1,10 @@
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, SecretComponent, Setting, SettingDefinitionItem } from "obsidian";
 import type NextSyncPlugin from "./main";
-import { addSecretPicker, isSecretStorageAvailable } from "./secrets";
+import { validateRemoteFolder, validateServerUrl } from "./webdav";
 
 export interface NextSyncSettings {
   serverUrl: string;
   loginName: string;
-  appPassword: string;
   passwordSecretId: string;
   userId: string;
   remoteFolder: string;
@@ -20,7 +19,6 @@ export interface NextSyncSettings {
 export const DEFAULT_SETTINGS: NextSyncSettings = {
   serverUrl: "",
   loginName: "",
-  appPassword: "",
   passwordSecretId: "",
   userId: "",
   remoteFolder: "Obsidian",
@@ -32,65 +30,243 @@ export const DEFAULT_SETTINGS: NextSyncSettings = {
   ignorePaths: [],
 };
 
+const CREDENTIAL_KEYS = new Set(["serverUrl", "loginName", "passwordSecretId"]);
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function toWholeNumber(value: unknown): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export class NextSyncSettingTab extends PluginSettingTab {
+  private connectionStatus = "";
+
   constructor(app: App, private readonly plugin: NextSyncPlugin) {
     super(app, plugin);
   }
 
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-    this.renderConnection(containerEl);
-    this.renderSync(containerEl);
-    this.renderSafety(containerEl);
-    this.renderMaintenance(containerEl);
+  getControlValue(key: string): unknown {
+    const settings = this.plugin.settings;
+    switch (key) {
+      case "ignorePaths":
+        return settings.ignorePaths.join("\n");
+      case "serverUrl":
+      case "loginName":
+      case "passwordSecretId":
+      case "remoteFolder":
+      case "autoSyncMinutes":
+      case "maxDeletions":
+      case "syncOnStartup":
+      case "propagateDeletions":
+      case "confirmRemoteDeletion":
+        return settings[key];
+      default:
+        return undefined;
+    }
   }
 
-  private renderConnection(containerEl: HTMLElement): void {
-    const s = this.plugin.settings;
-    new Setting(containerEl).setName("Conexão com o Nextcloud").setHeading();
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const settings = this.plugin.settings;
+    switch (key) {
+      case "serverUrl":
+      case "loginName":
+      case "passwordSecretId":
+        settings[key] = typeof value === "string" ? value.trim() : "";
+        break;
+      case "remoteFolder":
+        settings.remoteFolder = typeof value === "string" ? value.trim().replace(/^\/+|\/+$/g, "") : "";
+        break;
+      case "ignorePaths":
+        settings.ignorePaths = String(value ?? "")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+        break;
+      case "autoSyncMinutes":
+      case "maxDeletions":
+        settings[key] = toWholeNumber(value);
+        break;
+      case "syncOnStartup":
+      case "propagateDeletions":
+      case "confirmRemoteDeletion":
+        settings[key] = value === true;
+        break;
+      default:
+        return;
+    }
 
-    new Setting(containerEl)
-      .setName("Endereço do servidor")
-      .setDesc("Somente a raiz do Nextcloud, com HTTPS. Exemplo: https://nuvem.exemplo.com")
-      .addText((text) =>
-        text
-          .setPlaceholder("https://nuvem.exemplo.com")
-          .setValue(s.serverUrl)
-          .onChange(async (value) => {
-            s.serverUrl = value.trim();
-            s.userId = "";
-            await this.plugin.saveSettings();
-          }),
-      );
+    if (CREDENTIAL_KEYS.has(key)) {
+      settings.userId = "";
+      this.connectionStatus = "";
+    }
+    await this.plugin.saveSettings();
+    if (key === "autoSyncMinutes") this.plugin.restartAutoSync();
+    if (key === "propagateDeletions") this.refreshDomState();
+  }
 
-    new Setting(containerEl)
-      .setName("Usuário")
-      .setDesc("Nome de login do Nextcloud (pode ser o e-mail).")
-      .addText((text) =>
-        text.setValue(s.loginName).onChange(async (value) => {
-          s.loginName = value.trim();
-          s.userId = "";
-          await this.plugin.saveSettings();
-        }),
-      );
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const settings = this.plugin.settings;
+    const configDir = this.app.vault.configDir;
 
-    this.renderPassword(containerEl);
+    return [
+      {
+        type: "group",
+        heading: "Conexão com o Nextcloud",
+        items: [
+          {
+            name: "Endereço do servidor",
+            desc: "Somente a raiz do Nextcloud, com HTTPS. Exemplo: https://nuvem.exemplo.com",
+            aliases: ["servidor", "url", "nextcloud", "server"],
+            control: {
+              type: "text",
+              key: "serverUrl",
+              placeholder: "https://nuvem.exemplo.com",
+              validate: (value) => {
+                if (!value.trim()) return;
+                try {
+                  validateServerUrl(value);
+                } catch (error) {
+                  return errorMessage(error);
+                }
+              },
+            },
+          },
+          {
+            name: "Usuário",
+            desc: "Nome de login do Nextcloud (pode ser o e-mail).",
+            aliases: ["login", "username"],
+            control: { type: "text", key: "loginName" },
+          },
+          {
+            name: "Senha de aplicativo",
+            desc:
+              "Guardada no armazenamento de segredos do Obsidian, fora do arquivo de configuração do plugin. " +
+              "Crie a senha no Nextcloud em Configurações pessoais → Segurança → Dispositivos e sessões.",
+            aliases: ["senha", "password", "token", "segredo"],
+            render: (setting) => {
+              setting.addComponent((el) =>
+                new SecretComponent(this.app, el)
+                  .setValue(settings.passwordSecretId)
+                  .onChange((id) => this.setControlValue("passwordSecretId", id ?? "")),
+              );
+            },
+          },
+          {
+            name: "Pasta remota",
+            desc: "Pasta do Nextcloud que espelhará este cofre. É criada automaticamente se não existir.",
+            aliases: ["pasta", "folder", "diretório"],
+            control: {
+              type: "text",
+              key: "remoteFolder",
+              placeholder: "Obsidian",
+              validate: (value) => {
+                try {
+                  validateRemoteFolder(value);
+                } catch (error) {
+                  return errorMessage(error);
+                }
+              },
+            },
+          },
+          {
+            name: "Testar conexão",
+            desc: "Verifica o endereço, o usuário e a senha de aplicativo.",
+            aliases: ["conexão", "test"],
+            render: (setting) => this.renderConnectionTest(setting),
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Sincronização",
+        items: [
+          {
+            name: "Sincronização automática",
+            desc: "Intervalo em minutos entre sincronizações automáticas. Use 0 para desativar.",
+            aliases: ["intervalo", "automática", "interval"],
+            control: { type: "number", key: "autoSyncMinutes", min: 0, defaultValue: 0 },
+          },
+          {
+            name: "Sincronizar ao abrir o Obsidian",
+            aliases: ["inicialização", "startup"],
+            control: { type: "toggle", key: "syncOnStartup" },
+          },
+          {
+            name: "Pastas ignoradas",
+            desc: `Uma por linha, relativas ao cofre. A pasta de configuração (${configDir}) e os arquivos e pastas ocultos já são ignorados.`,
+            aliases: ["ignorar", "exclusões", "ignore"],
+            control: { type: "textarea", key: "ignorePaths", rows: 4, placeholder: "Rascunhos\nAnexos/Grandes" },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Segurança",
+        items: [
+          {
+            name: "Propagar exclusões",
+            desc:
+              "Ativado: excluir um arquivo de um lado o exclui do outro. " +
+              "Desativado: o arquivo excluído é restaurado a partir do outro lado.",
+            aliases: ["exclusão", "delete"],
+            control: { type: "toggle", key: "propagateDeletions" },
+          },
+          {
+            name: "Confirmar exclusões no Nextcloud",
+            desc:
+              "Ao excluir uma nota ou pasta sincronizada, pergunta se ela também deve ser excluída no Nextcloud. " +
+              "A mesma confirmação é pedida quando uma sincronização for excluir arquivos no servidor.",
+            aliases: ["confirmação", "confirm"],
+            control: {
+              type: "toggle",
+              key: "confirmRemoteDeletion",
+              disabled: () => !settings.propagateDeletions,
+            },
+          },
+          {
+            name: "Limite de exclusões por sincronização",
+            desc: "Se uma sincronização for excluir mais arquivos do que isso, ela é cancelada. Use 0 para não limitar.",
+            aliases: ["limite", "limit"],
+            control: { type: "number", key: "maxDeletions", min: 0, defaultValue: 50 },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Manutenção",
+        items: [
+          {
+            name: "Redefinir estado de sincronização",
+            desc:
+              "Esquece o histórico das sincronizações anteriores. Na próxima vez, os arquivos serão comparados como " +
+              "numa primeira sincronização: nada é excluído e as diferenças viram cópias de conflito.",
+            aliases: ["redefinir", "reset"],
+            render: (setting) => {
+              setting.addButton((button) =>
+                button
+                  .setButtonText("Redefinir")
+                  .setDestructive()
+                  .onClick(async () => {
+                    await this.plugin.resetState();
+                    new Notice("NextSync: estado de sincronização redefinido.");
+                  }),
+              );
+            },
+          },
+        ],
+      },
+    ];
+  }
 
-    new Setting(containerEl)
-      .setName("Pasta remota")
-      .setDesc("Pasta do Nextcloud que espelhará este cofre. É criada automaticamente se não existir.")
-      .addText((text) =>
-        text.setValue(s.remoteFolder).onChange(async (value) => {
-          s.remoteFolder = value.trim().replace(/^\/+|\/+$/g, "");
-          await this.plugin.saveSettings();
-        }),
-      );
+  private renderConnectionTest(setting: Setting): void {
+    const settings = this.plugin.settings;
+    if (this.connectionStatus) setting.setDesc(this.connectionStatus);
+    else if (settings.userId) setting.setDesc(`Conectado como “${settings.userId}”.`);
 
-    const status = new Setting(containerEl)
-      .setName("Testar conexão")
-      .setDesc(s.userId ? `Conectado como “${s.userId}”.` : "Conexão ainda não verificada.");
-    status.addButton((button) =>
+    setting.addButton((button) =>
       button
         .setButtonText("Testar conexão")
         .setCta()
@@ -98,174 +274,16 @@ export class NextSyncSettingTab extends PluginSettingTab {
           button.setDisabled(true).setButtonText("Testando…");
           try {
             const user = await this.plugin.testConnection();
-            status.setDesc(`Conectado como “${user.displayName}” (ID: ${user.id}).`);
+            this.connectionStatus = `Conectado como “${user.displayName}” (ID: ${user.id}).`;
             new Notice(`NextSync: conexão bem-sucedida como ${user.displayName}.`);
           } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            status.setDesc(`Falha: ${message}`);
-            new Notice(`NextSync: ${message}`, 8000);
+            this.connectionStatus = `Falha: ${errorMessage(error)}`;
+            new Notice(`NextSync: ${errorMessage(error)}`, 8000);
           } finally {
+            setting.setDesc(this.connectionStatus);
             button.setDisabled(false).setButtonText("Testar conexão");
           }
         }),
     );
-  }
-
-  private renderPassword(containerEl: HTMLElement): void {
-    const s = this.plugin.settings;
-    const setting = new Setting(containerEl).setName("Senha de aplicativo");
-
-    if (isSecretStorageAvailable(this.app, setting)) {
-      setting.setDesc(
-        "Guardada no armazenamento de segredos do Obsidian, fora do arquivo de configuração do plugin. " +
-          "Crie a senha em Configurações pessoais → Segurança → Dispositivos e sessões do Nextcloud.",
-      );
-      addSecretPicker(this.app, setting, s.passwordSecretId, async (id) => {
-        s.passwordSecretId = id;
-        s.appPassword = "";
-        s.userId = "";
-        await this.plugin.saveSettings();
-      });
-      if (s.appPassword) {
-        new Setting(containerEl)
-          .setName("Senha antiga em texto simples")
-          .setDesc("Há uma senha gravada no arquivo de configuração. Selecione um segredo acima ou remova-a.")
-          .addButton((button) =>
-            button
-              .setButtonText("Remover")
-              .setWarning()
-              .onClick(async () => {
-                s.appPassword = "";
-                await this.plugin.saveSettings();
-                this.display();
-              }),
-          );
-      }
-      return;
-    }
-
-    setting
-      .setDesc(
-        "O armazenamento de segredos do Obsidian não está disponível neste dispositivo; " +
-          "a senha ficará no arquivo data.json do plugin. Use uma senha de aplicativo exclusiva e revogável.",
-      )
-      .addText((text) => {
-        text.inputEl.type = "password";
-        text.inputEl.autocomplete = "off";
-        text.setValue(s.appPassword).onChange(async (value) => {
-          s.appPassword = value.trim();
-          s.userId = "";
-          await this.plugin.saveSettings();
-        });
-      });
-  }
-
-  private renderSync(containerEl: HTMLElement): void {
-    const s = this.plugin.settings;
-    new Setting(containerEl).setName("Sincronização").setHeading();
-
-    new Setting(containerEl)
-      .setName("Sincronização automática")
-      .setDesc("Intervalo em minutos entre sincronizações automáticas. Use 0 para desativar.")
-      .addText((text) => {
-        text.inputEl.type = "number";
-        text.inputEl.min = "0";
-        text.setValue(String(s.autoSyncMinutes)).onChange(async (value) => {
-          s.autoSyncMinutes = Math.max(0, Math.floor(Number(value) || 0));
-          await this.plugin.saveSettings();
-          this.plugin.restartAutoSync();
-        });
-      });
-
-    new Setting(containerEl).setName("Sincronizar ao abrir o Obsidian").addToggle((toggle) =>
-      toggle.setValue(s.syncOnStartup).onChange(async (value) => {
-        s.syncOnStartup = value;
-        await this.plugin.saveSettings();
-      }),
-    );
-
-    new Setting(containerEl)
-      .setName("Pastas ignoradas")
-      .setDesc("Uma por linha, relativas ao cofre. Arquivos e pastas ocultos, como .obsidian, já são ignorados.")
-      .addTextArea((text) => {
-        text.inputEl.rows = 4;
-        text
-          .setPlaceholder("Rascunhos\nAnexos/Grandes")
-          .setValue(s.ignorePaths.join("\n"))
-          .onChange(async (value) => {
-            s.ignorePaths = value
-              .split("\n")
-              .map((line) => line.trim())
-              .filter((line) => line.length > 0);
-            await this.plugin.saveSettings();
-          });
-      });
-  }
-
-  private renderSafety(containerEl: HTMLElement): void {
-    const s = this.plugin.settings;
-    new Setting(containerEl).setName("Segurança").setHeading();
-
-    new Setting(containerEl)
-      .setName("Propagar exclusões")
-      .setDesc(
-        "Ativado: excluir um arquivo de um lado o exclui do outro. Desativado: o arquivo excluído é restaurado a partir do outro lado.",
-      )
-      .addToggle((toggle) =>
-        toggle.setValue(s.propagateDeletions).onChange(async (value) => {
-          s.propagateDeletions = value;
-          await this.plugin.saveSettings();
-          this.display();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Confirmar exclusões no Nextcloud")
-      .setDesc(
-        "Ao excluir uma nota ou pasta sincronizada, pergunta se ela também deve ser excluída no Nextcloud. " +
-          "A mesma confirmação é pedida quando uma sincronização for excluir arquivos no servidor.",
-      )
-      .setDisabled(!s.propagateDeletions)
-      .addToggle((toggle) =>
-        toggle
-          .setValue(s.confirmRemoteDeletion)
-          .setDisabled(!s.propagateDeletions)
-          .onChange(async (value) => {
-            s.confirmRemoteDeletion = value;
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName("Limite de exclusões por sincronização")
-      .setDesc("Se uma sincronização for excluir mais arquivos do que isso, ela é cancelada. Use 0 para não limitar.")
-      .addText((text) => {
-        text.inputEl.type = "number";
-        text.inputEl.min = "0";
-        text.setValue(String(s.maxDeletions)).onChange(async (value) => {
-          s.maxDeletions = Math.max(0, Math.floor(Number(value) || 0));
-          await this.plugin.saveSettings();
-        });
-      });
-  }
-
-  private renderMaintenance(containerEl: HTMLElement): void {
-    new Setting(containerEl).setName("Manutenção").setHeading();
-
-    new Setting(containerEl)
-      .setName("Redefinir estado de sincronização")
-      .setDesc(
-        "Esquece o histórico das sincronizações anteriores. Na próxima vez, os arquivos serão comparados como " +
-          "numa primeira sincronização: nada é excluído e as diferenças viram cópias de conflito.",
-      )
-      .addButton((button) =>
-        button
-          .setButtonText("Redefinir")
-          .setWarning()
-          .onClick(async () => {
-            await this.plugin.resetState();
-            new Notice("NextSync: estado de sincronização redefinido.");
-          }),
-      );
   }
 }

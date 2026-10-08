@@ -17,14 +17,14 @@ Works on desktop (Linux, Windows, macOS) and mobile (Android, iOS).
 
 ## Requirements
 
-- Obsidian 1.11.4 or later.
+- Obsidian 1.13.1 or later.
 - A Nextcloud account and an **app password** (*Personal settings → Security → Devices & sessions*).
 
 ## Installation
 
 From Obsidian: *Settings → Community plugins → Browse*, search for **NextSync**, then install and enable it.
 
-Manual installation: download `main.js`, `manifest.json` and `styles.css` from the latest release and copy them to `<vault>/.obsidian/plugins/nextsync/`.
+Manual installation: download `main.js`, `manifest.json` and `styles.css` from the latest release and copy them to `<vault>/<configuration folder>/plugins/nextsync/` (the configuration folder is `.obsidian` by default).
 
 ## Setup
 
@@ -45,7 +45,7 @@ Manual installation: download `main.js`, `manifest.json` and `styles.css` from t
 | Changed on both sides | Conflict copy of the server version, local version kept and uploaded |
 | New file on one side | Copied to the other side |
 | Deleted in the vault | Deleted on Nextcloud (after confirmation, if enabled) |
-| Deleted on Nextcloud | Local file moved to the vault's `.trash` folder |
+| Deleted on Nextcloud | Local file moved to the trash chosen in Obsidian's *Files and links → Deleted files* setting |
 | Deleted on one side and changed on the other | The changed version is restored |
 
 On the first sync, files that exist on both sides are compared byte by byte. If they differ, a conflict copy is created and nothing is overwritten.
@@ -56,6 +56,7 @@ On the first sync, files that exist on both sides are compared byte by byte. If 
 - **Account**: a Nextcloud account on a server of your choice is required.
 - **Payment**: free. No payment is required.
 - **Telemetry**: none.
+- **Vault access**: to compare the vault with the server, the plugin lists every file in the vault and reads, creates, modifies and moves to the trash only the files inside the synced scope. The configuration folder, hidden files and the folders you choose to ignore are never read or uploaded.
 - **Files outside the vault**: the plugin does not access files outside the vault.
 
 ## Security
@@ -64,12 +65,13 @@ On the first sync, files that exist on both sides are compared byte by byte. If 
 - Sync of the account's root folder is not allowed; a remote folder is mandatory.
 - Remote file names containing `..`, backslashes or control characters are ignored.
 - Server-side deletions use `If-Match` with the last known ETag. A file changed on Nextcloud since the last sync is never deleted; it is restored to the vault instead.
-- Local deletions go to the vault's `.trash` folder; server deletions go to the Nextcloud trash bin.
+- Local deletions follow Obsidian's deleted-files preference (vault `.trash` folder or system trash); server deletions go to the Nextcloud trash bin.
+- An app password stored in plain text by an earlier version is moved automatically to Obsidian's secret storage.
 - Changing the server, user or remote folder resets the sync history automatically.
 
 ## Known limitations
 
-- Hidden files and folders, including the `.obsidian` configuration folder, are not synced.
+- Hidden files and folders, and the Obsidian configuration folder, are not synced.
 - Empty folders are not created or deleted.
 - Renaming a file is handled as a deletion followed by a creation.
 - Transfers run one at a time.
@@ -77,7 +79,8 @@ On the first sync, files that exist on both sides are compared byte by byte. If 
 ## Building from source
 
 ```bash
-npm install
+npm ci
+npm run lint
 npm run build
 ```
 

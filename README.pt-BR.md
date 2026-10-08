@@ -3,18 +3,19 @@
 Plugin do Obsidian que sincroniza o cofre com uma pasta do **Nextcloud** por WebDAV.
 Funciona no desktop (Linux, Windows e macOS) e no celular (Android e iOS).
 
-Versão atual: **1.0.1** · Requer Obsidian 1.11.4 ou mais recente.
+Versão atual: **1.0.2** · Requer Obsidian 1.13.1 ou mais recente.
 
 ## Instalação
 
 Pelo Obsidian: *Configurações → Plugins da comunidade → Procurar*, pesquise **NextSync**, instale e ative.
 
-Instalação manual: baixe `main.js`, `manifest.json` e `styles.css` da release mais recente e copie-os para `<cofre>/.obsidian/plugins/nextsync/`.
+Instalação manual: baixe `main.js`, `manifest.json` e `styles.css` da release mais recente e copie-os para `<cofre>/<pasta de configuração>/plugins/nextsync/` (a pasta de configuração é `.obsidian` por padrão).
 
 ## Compilação a partir do código-fonte
 
 ```bash
-npm install
+npm ci
+npm run lint
 npm run build
 ```
 
@@ -32,7 +33,7 @@ Requer Node.js 18 ou mais recente. `npm run dev` recompila automaticamente a cad
 
 ### Onde a senha é guardada
 
-A senha é escolhida no armazenamento de segredos do Obsidian (*SecretStorage*) e não é gravada no arquivo de configuração do plugin. Se, por algum motivo, esse recurso não estiver disponível no dispositivo, o plugin oferece um campo de senha comum, que fica no arquivo `data.json` sem criptografia; nesse caso, use uma senha de aplicativo exclusiva, que pode ser revogada a qualquer momento no Nextcloud.
+A senha é escolhida no armazenamento de segredos do Obsidian (*SecretStorage*) e não é gravada no arquivo de configuração do plugin. Uma senha gravada em texto simples por uma versão anterior é transferida automaticamente para o armazenamento de segredos.
 
 ## Declarações
 
@@ -40,6 +41,7 @@ A senha é escolhida no armazenamento de segredos do Obsidian (*SecretStorage*) 
 - **Conta**: exige uma conta Nextcloud em um servidor de sua escolha.
 - **Pagamento**: gratuito.
 - **Telemetria**: nenhuma.
+- **Acesso ao cofre**: para comparar o cofre com o servidor, o plugin lista todos os arquivos do cofre e lê, cria, altera e envia para a lixeira apenas os arquivos dentro do escopo sincronizado. A pasta de configuração, os arquivos ocultos e as pastas ignoradas nunca são lidos nem enviados.
 - **Arquivos fora do cofre**: o plugin não acessa arquivos fora do cofre.
 
 ## Uso
@@ -58,7 +60,7 @@ Para cada arquivo, o plugin guarda a data e o tamanho locais e o **ETag** do Nex
 | Alterado nos dois lados | Conflito: a versão do servidor é salva como `nota (conflito AAAA-MM-DD HHMMSS).md` e a versão local é mantida e enviada |
 | Arquivo novo de um lado | Copia para o outro |
 | Excluído no cofre | Exclui no Nextcloud (com confirmação, se ativada) |
-| Excluído no Nextcloud | Move o arquivo local para a pasta `.trash` do cofre |
+| Excluído no Nextcloud | Move o arquivo local para a lixeira definida em *Arquivos e links → Arquivos excluídos* do Obsidian |
 | Excluído de um lado e alterado do outro | A versão alterada é restaurada |
 
 Na primeira sincronização, arquivos presentes nos dois lados são comparados byte a byte. Se forem diferentes, viram conflito e nada é sobrescrito.
@@ -81,7 +83,7 @@ A opção pode ser desativada em *Configurações → NextSync → Segurança*. 
 - Exige uma pasta remota; não sincroniza a raiz da conta.
 - Ignora nomes de arquivo remotos inválidos ou perigosos (por exemplo, com `..`, barras invertidas ou caracteres de controle).
 - Exclusões no servidor usam `If-Match` com o ETag conhecido. Se o arquivo foi alterado no Nextcloud depois da última sincronização, ele não é excluído e volta para o cofre.
-- Exclusões locais vão para a pasta `.trash` do cofre; no servidor, para a lixeira do Nextcloud.
+- Exclusões locais seguem a preferência de arquivos excluídos do Obsidian (pasta `.trash` do cofre ou lixeira do sistema); no servidor, vão para a lixeira do Nextcloud.
 - A sincronização é interrompida quando a pasta remota ou o cofre aparecem vazios inesperadamente, ou quando o número de exclusões passa do limite configurado (padrão: 50).
 - Trocar servidor, usuário ou pasta remota zera o histórico automaticamente.
 - Operações de sincronização e de exclusão são executadas em fila, nunca ao mesmo tempo.
@@ -89,7 +91,7 @@ A opção pode ser desativada em *Configurações → NextSync → Segurança*. 
 
 ## Limitações conhecidas
 
-- Arquivos e pastas ocultos, incluindo a pasta de configuração `.obsidian`, não são sincronizados.
+- Arquivos e pastas ocultos, e a pasta de configuração do Obsidian, não são sincronizados.
 - Pastas vazias não são criadas nem excluídas.
 - Renomear um arquivo é tratado como excluir o antigo e criar o novo.
 - As transferências são sequenciais.

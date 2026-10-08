@@ -1,18 +1,18 @@
 import { Notice, Plugin, TAbstractFile } from "obsidian";
 import { DeletionModal } from "./deletion-modal";
-import { readSecret } from "./secrets";
 import { DEFAULT_SETTINGS, NextSyncSettings, NextSyncSettingTab } from "./settings";
 import { SyncEngine, SyncReport, SyncState, isIgnoredPath } from "./sync";
 import { NextcloudClient, validateRemoteFolder, validateServerUrl } from "./webdav";
 
 interface StoredData {
-  settings: NextSyncSettings;
+  settings: Partial<NextSyncSettings> & { appPassword?: string };
   syncState: SyncState;
   stateKey: string;
   lastSync: number;
 }
 
 const DELETE_DEBOUNCE_MS = 600;
+const LEGACY_SECRET_ID = "nextsync-app-password";
 
 export default class NextSyncPlugin extends Plugin {
   settings: NextSyncSettings = { ...DEFAULT_SETTINGS };
@@ -83,7 +83,7 @@ export default class NextSyncPlugin extends Plugin {
 
   async testConnection(): Promise<{ id: string; displayName: string }> {
     const s = this.settings;
-    const password = await this.resolvePassword();
+    const password = this.resolvePassword();
     if (!s.serverUrl || !s.loginName || !password) {
       throw new Error("Preencha o endereço, o usuário e a senha de aplicativo.");
     }
@@ -143,7 +143,7 @@ export default class NextSyncPlugin extends Plugin {
     if (this.ownDeletions.delete(file.path)) return;
     const s = this.settings;
     if (!s.propagateDeletions || !s.confirmRemoteDeletion) return;
-    if (isIgnoredPath(file.path, s.ignorePaths)) return;
+    if (isIgnoredPath(file.path, s.ignorePaths, this.app.vault.configDir)) return;
 
     this.pendingDeletes.add(file.path);
     if (this.deleteTimer !== null) window.clearTimeout(this.deleteTimer);
@@ -219,7 +219,7 @@ export default class NextSyncPlugin extends Plugin {
 
   private async createClient(): Promise<NextcloudClient> {
     const s = this.settings;
-    const password = await this.resolvePassword();
+    const password = this.resolvePassword();
     if (!s.serverUrl || !s.loginName || !password) {
       throw new Error("Configure o endereço, o usuário e a senha de aplicativo nas configurações do plugin.");
     }
@@ -236,12 +236,23 @@ export default class NextSyncPlugin extends Plugin {
     });
   }
 
-  private async resolvePassword(): Promise<string> {
-    if (this.settings.passwordSecretId) {
-      const secret = await readSecret(this.app, this.settings.passwordSecretId);
-      if (secret) return secret;
+  private resolvePassword(): string {
+    const id = this.settings.passwordSecretId;
+    return id ? (this.app.secretStorage.getSecret(id) ?? "") : "";
+  }
+
+  private migrateLegacyPassword(legacyPassword: string | undefined): boolean {
+    if (!legacyPassword) return false;
+    if (!this.settings.passwordSecretId) {
+      try {
+        this.app.secretStorage.setSecret(LEGACY_SECRET_ID, legacyPassword);
+        this.settings.passwordSecretId = LEGACY_SECRET_ID;
+      } catch (error) {
+        console.error("[NextSync] Não foi possível migrar a senha para o armazenamento de segredos.", error);
+        new Notice("NextSync: selecione novamente a senha de aplicativo nas configurações do plugin.", 10_000);
+      }
     }
-    return this.settings.appPassword;
+    return true;
   }
 
   private currentTargetKey(): string {
@@ -268,11 +279,14 @@ export default class NextSyncPlugin extends Plugin {
   }
 
   private async loadAll(): Promise<void> {
-    const data = ((await this.loadData()) ?? {}) as Partial<StoredData>;
-    this.settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
+    const raw: unknown = await this.loadData();
+    const data: Partial<StoredData> = raw !== null && typeof raw === "object" ? raw : {};
+    const { appPassword, ...stored } = data.settings ?? {};
+    this.settings = { ...DEFAULT_SETTINGS, ...stored };
     this.syncState = data.syncState ?? {};
     this.stateKey = data.stateKey ?? "";
     this.lastSync = data.lastSync ?? 0;
+    if (this.migrateLegacyPassword(appPassword)) await this.persist();
   }
 
   private async persist(): Promise<void> {

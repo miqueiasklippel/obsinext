@@ -1,0 +1,44 @@
+name: Lockfile
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+      - .npmrc
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lockfile
+  cancel-in-progress: false
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate package-lock.json
+        run: npm install --package-lock-only --no-audit --no-fund
+
+      - name: Commit package-lock.json
+        run: |
+          if git diff --quiet --exit-code -- package-lock.json && git ls-files --error-unmatch package-lock.json > /dev/null 2>&1; then
+            echo "package-lock.json is up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Update package-lock.json"
+          git push
