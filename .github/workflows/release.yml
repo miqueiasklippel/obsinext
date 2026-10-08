@@ -2,11 +2,19 @@ name: Release
 
 on:
   push:
-    tags:
-      - "*"
+    branches:
+      - main
+    paths:
+      - manifest.json
+      - .github/workflows/release.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -15,30 +23,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read version from manifest.json
+        id: version
+        run: echo "value=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the release already exists
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.value }}" > /dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.version.outputs.value }} already exists. Nothing to do."
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js
+        if: steps.existing.outputs.found == 'false'
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install dependencies
+        if: steps.existing.outputs.found == 'false'
         run: npm install --no-audit --no-fund
 
       - name: Build
+        if: steps.existing.outputs.found == 'false'
         run: npm run build
 
-      - name: Check that the tag matches manifest.json
+      - name: Check versions.json
+        if: steps.existing.outputs.found == 'false'
         run: |
-          manifest_version="$(node -p "require('./manifest.json').version")"
-          if [ "$manifest_version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match manifest.json version $manifest_version."
-            exit 1
-          fi
+          node -e "
+            const v = require('./manifest.json').version;
+            if (!require('./versions.json')[v]) {
+              console.error('versions.json has no entry for ' + v);
+              process.exit(1);
+            }
+          "
 
       - name: Create GitHub release
+        if: steps.existing.outputs.found == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          gh release create "${{ steps.version.outputs.value }}" \
+            --target "$GITHUB_SHA" \
+            --title "${{ steps.version.outputs.value }}" \
             --generate-notes \
             main.js manifest.json styles.css
