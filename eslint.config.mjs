@@ -14,5 +14,8 @@ export default defineConfig([
         },
       },
     },
+    rules: {
+      "obsidianmd/ui/sentence-case": ["warn", { brands: ["NextSync", "Nextcloud", "WebDAV", "HTTPS"] }],
+    },
   },
 ]);

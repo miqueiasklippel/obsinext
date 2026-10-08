@@ -80,7 +80,7 @@ export class NextSyncSettingTab extends PluginSettingTab {
         settings.remoteFolder = typeof value === "string" ? value.trim().replace(/^\/+|\/+$/g, "") : "";
         break;
       case "ignorePaths":
-        settings.ignorePaths = String(value ?? "")
+        settings.ignorePaths = (typeof value === "string" ? value : "")
           .split("\n")
           .map((line) => line.trim())
           .filter((line) => line.length > 0);
