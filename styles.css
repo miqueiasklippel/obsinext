@@ -1,0 +1,16 @@
+.obsinext-deletion-list {
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0 0 var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-2) var(--size-4-2) var(--size-4-6);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  word-break: break-all;
+}
+
+.obsinext-deletion-more {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}

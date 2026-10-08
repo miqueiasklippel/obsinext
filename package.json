@@ -1,0 +1,20 @@
+{
+  "name": "obsinext",
+  "version": "1.0.0",
+  "description": "Obsidian plugin that syncs a vault with a Nextcloud folder over WebDAV.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "latest",
+    "tslib": "^2.6.0",
+    "typescript": "^5.4.0"
+  },
+  "author": "Klippel"
+}
