@@ -1,15 +1,15 @@
-# Obsinext
+# NextSync
 
 Plugin do Obsidian que sincroniza o cofre com uma pasta do **Nextcloud** por WebDAV.
 Funciona no desktop (Linux, Windows e macOS) e no celular (Android e iOS).
 
-Versão atual: **1.0.0** · Requer Obsidian 1.11.4 ou mais recente.
+Versão atual: **1.0.1** · Requer Obsidian 1.11.4 ou mais recente.
 
 ## Instalação
 
-Pelo Obsidian: *Configurações → Plugins da comunidade → Procurar*, pesquise **Obsinext**, instale e ative.
+Pelo Obsidian: *Configurações → Plugins da comunidade → Procurar*, pesquise **NextSync**, instale e ative.
 
-Instalação manual: baixe `main.js`, `manifest.json` e `styles.css` da release mais recente e copie-os para `<cofre>/.obsidian/plugins/obsinext/`.
+Instalação manual: baixe `main.js`, `manifest.json` e `styles.css` da release mais recente e copie-os para `<cofre>/.obsidian/plugins/nextsync/`.
 
 ## Compilação a partir do código-fonte
 
@@ -23,7 +23,7 @@ Requer Node.js 18 ou mais recente. `npm run dev` recompila automaticamente a cad
 ## Configuração
 
 1. No Nextcloud, crie uma **senha de aplicativo** em *Configurações pessoais → Segurança → Dispositivos e sessões*.
-2. Nas configurações do Obsinext, informe:
+2. Nas configurações do NextSync, informe:
    - **Endereço do servidor**: somente a raiz, com HTTPS (por exemplo, `https://nuvem.exemplo.com`);
    - **Usuário**: o login do Nextcloud;
    - **Senha de aplicativo**;
@@ -44,7 +44,7 @@ A senha é escolhida no armazenamento de segredos do Obsidian (*SecretStorage*) 
 
 ## Uso
 
-- Ícone de setas circulares na barra lateral ou o comando **“Obsinext: Sincronizar agora”**.
+- Ícone de setas circulares na barra lateral ou o comando **“NextSync: Sincronizar agora”**.
 - Opcional: sincronização automática a cada *N* minutos e ao abrir o Obsidian.
 
 ## Como a sincronização funciona
@@ -72,7 +72,7 @@ Com **Confirmar exclusões no Nextcloud** ativada (padrão), ao excluir uma nota
 
 A janela aparece logo depois da exclusão no Obsidian, porque o Obsidian não oferece aos plugins um aviso anterior à exclusão. A confirmação também é pedida quando uma sincronização encontra arquivos que deixaram de existir no cofre, por exemplo, excluídos com o Obsidian fechado.
 
-A opção pode ser desativada em *Configurações → Obsinext → Segurança*. Ela só tem efeito com **Propagar exclusões** ativada.
+A opção pode ser desativada em *Configurações → NextSync → Segurança*. Ela só tem efeito com **Propagar exclusões** ativada.
 
 ## Segurança
 

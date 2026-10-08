@@ -1,8 +1,8 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
-import type ObsinextPlugin from "./main";
+import type NextSyncPlugin from "./main";
 import { addSecretPicker, isSecretStorageAvailable } from "./secrets";
 
-export interface ObsinextSettings {
+export interface NextSyncSettings {
   serverUrl: string;
   loginName: string;
   appPassword: string;
@@ -17,7 +17,7 @@ export interface ObsinextSettings {
   ignorePaths: string[];
 }
 
-export const DEFAULT_SETTINGS: ObsinextSettings = {
+export const DEFAULT_SETTINGS: NextSyncSettings = {
   serverUrl: "",
   loginName: "",
   appPassword: "",
@@ -32,8 +32,8 @@ export const DEFAULT_SETTINGS: ObsinextSettings = {
   ignorePaths: [],
 };
 
-export class ObsinextSettingTab extends PluginSettingTab {
-  constructor(app: App, private readonly plugin: ObsinextPlugin) {
+export class NextSyncSettingTab extends PluginSettingTab {
+  constructor(app: App, private readonly plugin: NextSyncPlugin) {
     super(app, plugin);
   }
 
@@ -99,11 +99,11 @@ export class ObsinextSettingTab extends PluginSettingTab {
           try {
             const user = await this.plugin.testConnection();
             status.setDesc(`Conectado como “${user.displayName}” (ID: ${user.id}).`);
-            new Notice(`Obsinext: conexão bem-sucedida como ${user.displayName}.`);
+            new Notice(`NextSync: conexão bem-sucedida como ${user.displayName}.`);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             status.setDesc(`Falha: ${message}`);
-            new Notice(`Obsinext: ${message}`, 8000);
+            new Notice(`NextSync: ${message}`, 8000);
           } finally {
             button.setDisabled(false).setButtonText("Testar conexão");
           }
@@ -264,7 +264,7 @@ export class ObsinextSettingTab extends PluginSettingTab {
           .setWarning()
           .onClick(async () => {
             await this.plugin.resetState();
-            new Notice("Obsinext: estado de sincronização redefinido.");
+            new Notice("NextSync: estado de sincronização redefinido.");
           }),
       );
   }

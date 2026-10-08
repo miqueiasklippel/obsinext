@@ -29,16 +29,16 @@ export class DeletionModal extends Modal {
   onOpen(): void {
     const { contentEl, titleEl } = this;
     titleEl.setText(this.prompt.title);
-    contentEl.addClass("obsinext-deletion-modal");
+    contentEl.addClass("nextsync-deletion-modal");
     contentEl.createEl("p", { text: this.prompt.message });
 
-    const list = contentEl.createEl("ul", { cls: "obsinext-deletion-list" });
+    const list = contentEl.createEl("ul", { cls: "nextsync-deletion-list" });
     for (const item of this.prompt.items.slice(0, VISIBLE_ITEMS)) {
       list.createEl("li", { text: item });
     }
     const hidden = this.prompt.items.length - VISIBLE_ITEMS;
     if (hidden > 0) {
-      contentEl.createEl("p", { text: `… e mais ${hidden} arquivo(s).`, cls: "obsinext-deletion-more" });
+      contentEl.createEl("p", { text: `… e mais ${hidden} arquivo(s).`, cls: "nextsync-deletion-more" });
     }
     contentEl.createEl("p", { text: this.prompt.keepHint, cls: "setting-item-description" });
 

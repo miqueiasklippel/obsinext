@@ -1,12 +1,12 @@
 import { Notice, Plugin, TAbstractFile } from "obsidian";
 import { DeletionModal } from "./deletion-modal";
 import { readSecret } from "./secrets";
-import { DEFAULT_SETTINGS, ObsinextSettings, ObsinextSettingTab } from "./settings";
+import { DEFAULT_SETTINGS, NextSyncSettings, NextSyncSettingTab } from "./settings";
 import { SyncEngine, SyncReport, SyncState, isIgnoredPath } from "./sync";
 import { NextcloudClient, validateRemoteFolder, validateServerUrl } from "./webdav";
 
 interface StoredData {
-  settings: ObsinextSettings;
+  settings: NextSyncSettings;
   syncState: SyncState;
   stateKey: string;
   lastSync: number;
@@ -14,8 +14,8 @@ interface StoredData {
 
 const DELETE_DEBOUNCE_MS = 600;
 
-export default class ObsinextPlugin extends Plugin {
-  settings: ObsinextSettings = { ...DEFAULT_SETTINGS };
+export default class NextSyncPlugin extends Plugin {
+  settings: NextSyncSettings = { ...DEFAULT_SETTINGS };
   private syncState: SyncState = {};
   private stateKey = "";
   private lastSync = 0;
@@ -30,8 +30,8 @@ export default class ObsinextPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadAll();
 
-    this.addSettingTab(new ObsinextSettingTab(this.app, this));
-    this.addRibbonIcon("refresh-cw", "Obsinext: sincronizar agora", () => void this.sync());
+    this.addSettingTab(new NextSyncSettingTab(this.app, this));
+    this.addRibbonIcon("refresh-cw", "NextSync: sincronizar agora", () => void this.sync());
     this.statusEl = this.addStatusBarItem();
     this.updateIdleStatus();
 
@@ -41,7 +41,7 @@ export default class ObsinextPlugin extends Plugin {
       name: "Redefinir estado de sincronização",
       callback: async () => {
         await this.resetState();
-        new Notice("Obsinext: estado de sincronização redefinido.");
+        new Notice("NextSync: estado de sincronização redefinido.");
       },
     });
 
@@ -95,7 +95,7 @@ export default class ObsinextPlugin extends Plugin {
 
   async sync(silent = false): Promise<void> {
     if (this.syncing) {
-      if (!silent) new Notice("Obsinext: já há uma sincronização em andamento.");
+      if (!silent) new Notice("NextSync: já há uma sincronização em andamento.");
       return;
     }
     this.syncing = true;
@@ -104,8 +104,8 @@ export default class ObsinextPlugin extends Plugin {
       await this.exclusive(() => this.runSync(silent));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error("[Obsinext]", error);
-      new Notice(`Obsinext: ${message}`, 12_000);
+      console.error("[NextSync]", error);
+      new Notice(`NextSync: ${message}`, 12_000);
     } finally {
       this.syncing = false;
       await this.persist();
@@ -153,8 +153,8 @@ export default class ObsinextPlugin extends Plugin {
       this.pendingDeletes.clear();
       void this.exclusive(() => this.handleUserDeletion(paths)).catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
-        console.error("[Obsinext]", error);
-        new Notice(`Obsinext: ${message}`, 10_000);
+        console.error("[NextSync]", error);
+        new Notice(`NextSync: ${message}`, 10_000);
       });
     }, DELETE_DEBOUNCE_MS);
   }
@@ -178,7 +178,7 @@ export default class ObsinextPlugin extends Plugin {
     if (choice === "keep") {
       for (const path of affected) delete this.syncState[path];
       await this.persist();
-      new Notice("Obsinext: os arquivos foram mantidos no Nextcloud e voltarão na próxima sincronização.");
+      new Notice("NextSync: os arquivos foram mantidos no Nextcloud e voltarão na próxima sincronização.");
       return;
     }
 
@@ -191,7 +191,7 @@ export default class ObsinextPlugin extends Plugin {
       client = await this.createClient();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      new Notice(`Obsinext: ${message} A exclusão será feita na próxima sincronização.`, 10_000);
+      new Notice(`NextSync: ${message} A exclusão será feita na próxima sincronização.`, 10_000);
       return;
     }
 
@@ -206,7 +206,7 @@ export default class ObsinextPlugin extends Plugin {
         delete this.syncState[path];
       } catch (error) {
         failed++;
-        console.error("[Obsinext]", path, error);
+        console.error("[NextSync]", path, error);
       }
     }
     await this.persist();
@@ -214,7 +214,7 @@ export default class ObsinextPlugin extends Plugin {
     const parts = [`${deleted} arquivo(s) excluído(s) no Nextcloud`];
     if (kept) parts.push(`${kept} mantido(s) por terem sido alterados no servidor`);
     if (failed) parts.push(`${failed} pendente(s) para a próxima sincronização`);
-    new Notice(`Obsinext: ${parts.join("; ")}.`, kept || failed ? 10_000 : 5_000);
+    new Notice(`NextSync: ${parts.join("; ")}.`, kept || failed ? 10_000 : 5_000);
   }
 
   private async createClient(): Promise<NextcloudClient> {
@@ -286,7 +286,7 @@ export default class ObsinextPlugin extends Plugin {
   }
 
   private setStatus(text: string): void {
-    this.statusEl?.setText(`Obsinext: ${text}`);
+    this.statusEl?.setText(`NextSync: ${text}`);
   }
 
   private updateIdleStatus(): void {
@@ -308,17 +308,17 @@ export default class ObsinextPlugin extends Plugin {
     if (report.restored) parts.push(`${report.restored} restaurado(s) por alteração no servidor`);
 
     if (parts.length > 0 || !silent) {
-      new Notice(`Obsinext: ${parts.length > 0 ? parts.join(", ") : "tudo em dia"}.`);
+      new Notice(`NextSync: ${parts.length > 0 ? parts.join(", ") : "tudo em dia"}.`);
     }
     if (report.conflicts.length > 0) {
       new Notice(
-        `Obsinext: ${report.conflicts.length} conflito(s). A versão do servidor foi guardada como cópia “(conflito …)”:\n` +
+        `NextSync: ${report.conflicts.length} conflito(s). A versão do servidor foi guardada como cópia “(conflito …)”:\n` +
           report.conflicts.join("\n"),
         15_000,
       );
     }
     if (report.errors.length > 0) {
-      new Notice(`Obsinext: ${report.errors.length} erro(s):\n${report.errors.slice(0, 5).join("\n")}`, 15_000);
+      new Notice(`NextSync: ${report.errors.length} erro(s):\n${report.errors.slice(0, 5).join("\n")}`, 15_000);
     }
   }
 }

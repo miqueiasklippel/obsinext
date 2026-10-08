@@ -1,4 +1,4 @@
-.obsinext-deletion-list {
+.nextsync-deletion-list {
   max-height: 240px;
   overflow-y: auto;
   margin: 0 0 var(--size-4-2);
@@ -10,7 +10,7 @@
   word-break: break-all;
 }
 
-.obsinext-deletion-more {
+.nextsync-deletion-more {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }

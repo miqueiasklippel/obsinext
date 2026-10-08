@@ -1,6 +1,6 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
 import { NextcloudClient, RemoteEntry } from "./webdav";
-import { ObsinextSettings } from "./settings";
+import { NextSyncSettings } from "./settings";
 
 export interface FileState {
   localMtime: number;
@@ -78,7 +78,7 @@ export class SyncEngine {
   constructor(
     private readonly app: App,
     private readonly client: NextcloudClient,
-    private readonly settings: ObsinextSettings,
+    private readonly settings: NextSyncSettings,
     private readonly state: SyncState,
     private readonly hooks: SyncHooks,
   ) {}
@@ -130,7 +130,7 @@ export class SyncEngine {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         report.errors.push(`${action.path}: ${message}`);
-        console.error("[Obsinext]", action.kind, action.path, error);
+        console.error("[NextSync]", action.kind, action.path, error);
       }
       done++;
       this.hooks.onProgress(done, work.length);

@@ -1,4 +1,4 @@
-# Obsinext
+# NextSync
 
 Sync your Obsidian vault with a folder on your **Nextcloud** server over WebDAV.
 Works on desktop (Linux, Windows, macOS) and mobile (Android, iOS).
@@ -22,13 +22,13 @@ Works on desktop (Linux, Windows, macOS) and mobile (Android, iOS).
 
 ## Installation
 
-From Obsidian: *Settings → Community plugins → Browse*, search for **Obsinext**, then install and enable it.
+From Obsidian: *Settings → Community plugins → Browse*, search for **NextSync**, then install and enable it.
 
-Manual installation: download `main.js`, `manifest.json` and `styles.css` from the latest release and copy them to `<vault>/.obsidian/plugins/obsinext/`.
+Manual installation: download `main.js`, `manifest.json` and `styles.css` from the latest release and copy them to `<vault>/.obsidian/plugins/nextsync/`.
 
 ## Setup
 
-1. Open *Settings → Obsinext*.
+1. Open *Settings → NextSync*.
 2. Fill in:
    - **Server address**: only the root of your Nextcloud, using HTTPS (for example, `https://cloud.example.com`).
    - **Username**: your Nextcloud login.

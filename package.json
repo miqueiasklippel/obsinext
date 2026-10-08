@@ -1,6 +1,6 @@
 {
-  "name": "obsinext",
-  "version": "1.0.0",
+  "name": "nextsync",
+  "version": "1.0.1",
   "description": "Obsidian plugin that syncs a vault with a Nextcloud folder over WebDAV.",
   "main": "main.js",
   "private": true,
